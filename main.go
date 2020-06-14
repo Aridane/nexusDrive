@@ -37,10 +37,22 @@ func DownloadFile(path string, url string) error {
 
 func promtInput(promtStr, defaultValue string) (string, error) {
 	value := defaultValue
-
 	prompt := promptui.Prompt{
 		Label: promtStr + "(" + defaultValue + ")",
 	}
+	result, err := prompt.Run()
+
+	if err == nil && result != "" {
+		value = result
+	}
+	return value, err
+}
+
+func promtInputMasked(promtStr, defaultValue string) (string, error) {
+	value := defaultValue
+	prompt := promptui.Prompt{
+		Label: promtStr + "(" + defaultValue + ")",
+		Mask:  '*'}
 	result, err := prompt.Run()
 
 	if err == nil && result != "" {
@@ -231,7 +243,7 @@ func main() {
 	rootPath, err := promtInput("Root: ", "/home/aridane/NexusDrive")
 	nexusServer, err := promtInput("Server: ", "http://localhost:8081")
 	nexusUser, err := promtInput("User: ", "admin")
-	nexusPassword, err := promtInput("Password: ", "admin")
+	nexusPassword, err := promtInputMasked("Password: ", "admin")
 
 	// Connect to nexus
 	rm, err := nexusrm.New(nexusServer, nexusUser, nexusPassword)
@@ -250,7 +262,9 @@ func main() {
 		repoNames = append(repoNames, "Exit")
 		// Select which repo to work with
 		selectedRepo, _ := promtSelect("Select Repo", repoNames, "")
-
+		if selectedRepo == "Exit" {
+			exit = true
+		}
 		for !exit && !back {
 			actions := []string{"List repo", "List local", "Download all", "Upload all", "Back", "Exit"}
 			action, _ := promtSelect("Select Actions", actions, "")
