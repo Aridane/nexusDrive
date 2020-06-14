@@ -104,20 +104,53 @@ func ListLocal(rootPath string) {
 	}
 }
 
+// getMd5 Gets md5, 0 if error
+func getMd5(path string) (string, error) {
+	var res string
+	f, err := os.Open(path)
+	if err != nil {
+		return res, err
+	}
+	defer f.Close()
+
+	h := md5.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return res, err
+	}
+
+	res = fmt.Sprintf("%x", h.Sum(nil))
+	return res, nil
+}
+
 // DownloadAll Download all files from repo overwriting changed ones
 func DownloadAll(rm nexusrm.RM, repo string, rootPath string) {
 
 	components, err := nexusrm.GetComponents(rm, repo)
 	if err == nil {
 		for _, c := range components {
-			fmt.Println(c.Name, c.Assets[0].Checksum.Md5)
+
+			DownloadIfDifferent(rootPath, c)
 		}
 	}
-	for _, c := range components {
-		fmt.Println("Downloading ", rootPath+"/"+c.Name)
-		DownloadFile(rootPath+"/"+c.Name, c.Assets[0].DownloadURL)
-	}
 
+}
+
+// DownloadIfDifferent Downloads repository item if md5 are different
+func DownloadIfDifferent(rootPath string, c nexusrm.RepositoryItem) {
+	fileMd5, err := getMd5(rootPath + "/" + c.Name)
+	if err == nil && fileMd5 != c.Assets[0].Checksum.Md5 {
+		fmt.Println("Downloading ", rootPath+"/"+c.Name)
+		fmt.Println("\tRemote md5 ", c.Assets[0].Checksum.Md5)
+		fmt.Println("\tLocal md5  ", fileMd5)
+		DownloadFile(rootPath+"/"+c.Name, c.Assets[0].DownloadURL)
+	} else {
+		if err != nil {
+			fmt.Println("Skipping ", c.Name, err)
+		}
+		if fileMd5 == c.Assets[0].Checksum.Md5 {
+			fmt.Println("Skipping ", c.Name, ": Unchanged")
+		}
+	}
 }
 
 // UploadAll files overwriting
