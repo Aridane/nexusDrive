@@ -225,6 +225,9 @@ func UploadAll(rm nexusrm.RM, repo string, rootPath string) {
 
 func main() {
 
+	exit := false
+	back := false
+
 	rootPath, err := promtInput("Root: ", "/home/aridane/NexusDrive")
 	nexusServer, err := promtInput("Server: ", "http://localhost:8081")
 	nexusUser, err := promtInput("User: ", "admin")
@@ -236,29 +239,37 @@ func main() {
 		panic(err)
 	}
 
-	// Get list of repos
-	var repoNames []string
-	if repos, err := nexusrm.GetRepositories(rm); err == nil {
-		for _, r := range repos {
-			repoNames = append(repoNames, r.Name)
+	for !exit {
+		// Get list of repos
+		var repoNames []string
+		if repos, err := nexusrm.GetRepositories(rm); err == nil {
+			for _, r := range repos {
+				repoNames = append(repoNames, r.Name)
+			}
 		}
+		repoNames = append(repoNames, "Exit")
+		// Select which repo to work with
+		selectedRepo, _ := promtSelect("Select Repo", repoNames, "")
+
+		for !exit && !back {
+			actions := []string{"List repo", "List local", "Download all", "Upload all", "Back", "Exit"}
+			action, _ := promtSelect("Select Actions", actions, "")
+
+			switch action {
+			case actions[0]:
+				ListRepo(rm, selectedRepo)
+			case actions[1]:
+				ListLocal(rootPath)
+			case actions[2]:
+				DownloadAll(rm, selectedRepo, rootPath)
+			case actions[3]:
+				UploadAll(rm, selectedRepo, rootPath)
+			case actions[4]:
+				back = true
+			case actions[5]:
+				exit = true
+			}
+		}
+		back = false
 	}
-
-	// Select which repo to work with
-	selectedRepo, err := promtSelect("Select Repo", repoNames, "")
-
-	actions := []string{"List repo", "List local", "Download all", "Upload all"}
-	action, err := promtSelect("Select Actions", actions, "")
-
-	switch action {
-	case actions[0]:
-		ListRepo(rm, selectedRepo)
-	case actions[1]:
-		ListLocal(rootPath)
-	case actions[2]:
-		DownloadAll(rm, selectedRepo, rootPath)
-	case actions[3]:
-		UploadAll(rm, selectedRepo, rootPath)
-	}
-
 }
