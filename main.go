@@ -16,7 +16,6 @@ import (
 
 // DownloadFile download a file
 func DownloadFile(path string, url string) error {
-
 	syscall.Umask(0)
 	err := os.MkdirAll(filepath.Dir(path), 0775)
 
@@ -75,33 +74,50 @@ func ListRepo(rm nexusrm.RM, repo string) {
 	}
 }
 
-// ListLocal List all files in local folder
-func ListLocal(rootPath string) {
+func getLocalFiles(rootPath string) ([]string, error) {
+	var res []string
 	err := filepath.Walk(rootPath,
 		func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
 			if !info.IsDir() {
-				f, err := os.Open(path)
-				if err != nil {
-					log.Fatal(err)
-				}
-				defer f.Close()
-
-				h := md5.New()
-				if _, err := io.Copy(h, f); err != nil {
-					log.Fatal(err)
-				}
 				relPath, _ := filepath.Rel(rootPath, path)
-				fmt.Print(relPath, " ")
-				fmt.Printf("%x\n", h.Sum(nil))
+				res = append(res, relPath)
 			}
 			return nil
 		})
 	if err != nil {
 		log.Println(err)
 	}
+	return res, err
+}
+
+// ListLocal List all files in local folder
+func ListLocal(rootPath string) {
+	files, err := getLocalFiles(rootPath)
+	if err != nil {
+		log.Println(err)
+	}
+	for f := range files {
+		fmt.Println(f)
+	}
+}
+
+func getComponent(rm nexusrm.RM, repo string, path string) (nexusrm.RepositoryItem, bool) {
+	var res nexusrm.RepositoryItem
+	components, err := nexusrm.GetComponents(rm, repo)
+	found := false
+	if err == nil {
+		for _, c := range components {
+			if c.Assets[0].Path == path {
+				res = c
+				found = true
+				break
+			}
+		}
+	}
+	return res, found
 }
 
 // getMd5 Gets md5, 0 if error
@@ -117,18 +133,15 @@ func getMd5(path string) (string, error) {
 	if _, err := io.Copy(h, f); err != nil {
 		return res, err
 	}
-
 	res = fmt.Sprintf("%x", h.Sum(nil))
 	return res, nil
 }
 
 // DownloadAll Download all files from repo overwriting changed ones
 func DownloadAll(rm nexusrm.RM, repo string, rootPath string) {
-
 	components, err := nexusrm.GetComponents(rm, repo)
 	if err == nil {
 		for _, c := range components {
-
 			DownloadIfDifferent(rootPath, c)
 		}
 	}
@@ -137,12 +150,12 @@ func DownloadAll(rm nexusrm.RM, repo string, rootPath string) {
 
 // DownloadIfDifferent Downloads repository item if md5 are different
 func DownloadIfDifferent(rootPath string, c nexusrm.RepositoryItem) {
-	fileMd5, err := getMd5(rootPath + "/" + c.Name)
+	fileMd5, err := getMd5(filepath.Join(rootPath, c.Name))
 	if err == nil && fileMd5 != c.Assets[0].Checksum.Md5 {
-		fmt.Println("Downloading ", rootPath+"/"+c.Name)
+		fmt.Println("Downloading ", filepath.Join(rootPath, c.Name))
 		fmt.Println("\tRemote md5 ", c.Assets[0].Checksum.Md5)
 		fmt.Println("\tLocal md5  ", fileMd5)
-		DownloadFile(rootPath+"/"+c.Name, c.Assets[0].DownloadURL)
+		DownloadFile(filepath.Join(rootPath, c.Name), c.Assets[0].DownloadURL)
 	} else {
 		if err != nil {
 			fmt.Println("Skipping ", c.Name, err)
@@ -153,9 +166,61 @@ func DownloadIfDifferent(rootPath string, c nexusrm.RepositoryItem) {
 	}
 }
 
+// UploadIfDifferent Uploads item if md5 are different
+func UploadIfDifferent(rm nexusrm.RM, repo string, rootPath string, path string) {
+
+	c, found := getComponent(rm, repo, path)
+
+	if found {
+		fileMd5, err := getMd5(filepath.Join(rootPath, path))
+		if err == nil && fileMd5 != c.Assets[0].Checksum.Md5 {
+			fmt.Println("Uploading ", path)
+			UploadFile(rm, repo, rootPath, path)
+		} else {
+			if err != nil {
+				fmt.Println("Skipping ", c.Name, err)
+			}
+			if fileMd5 == c.Assets[0].Checksum.Md5 {
+				fmt.Println("Skipping ", c.Name, ": Unchanged")
+			}
+		}
+	} else {
+		fmt.Println("Uploading ", path)
+		UploadFile(rm, repo, rootPath, path)
+	}
+
+}
+
+// UploadFile uploads a file to repo
+func UploadFile(rm nexusrm.RM, repo string, rootPath string, path string) {
+	f, err := os.Open(filepath.Join(rootPath, path))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	component := nexusrm.UploadComponentRaw{
+		Assets: []nexusrm.UploadAssetRaw{
+			nexusrm.UploadAssetRaw{
+				File:     f,
+				Filename: filepath.Base(path)}},
+		Directory: filepath.Dir(path),
+		Tag:       ""}
+	err = nexusrm.UploadComponent(rm, repo, component)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 // UploadAll files overwriting
-func UploadAll() {
-	fmt.Println("Not developed yet :)")
+func UploadAll(rm nexusrm.RM, repo string, rootPath string) {
+	files, err := getLocalFiles(rootPath)
+	if err != nil {
+		log.Println(err)
+	}
+	for _, f := range files {
+		UploadIfDifferent(rm, repo, rootPath, f)
+	}
 }
 
 func main() {
@@ -193,7 +258,7 @@ func main() {
 	case actions[2]:
 		DownloadAll(rm, selectedRepo, rootPath)
 	case actions[3]:
-		UploadAll()
+		UploadAll(rm, selectedRepo, rootPath)
 	}
 
 }
