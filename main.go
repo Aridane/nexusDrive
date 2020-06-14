@@ -235,6 +235,53 @@ func UploadAll(rm nexusrm.RM, repo string, rootPath string) {
 	}
 }
 
+// DownloadOne downloads a single file
+func DownloadOne(rm nexusrm.RM, repo string, rootPath string) {
+	// Select file interactively
+	components, err := nexusrm.GetComponents(rm, repo)
+
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	if len(components) == 0 {
+		fmt.Println("No components")
+		return
+	}
+	var componentNames []string
+	var componentMap map[string]nexusrm.RepositoryItem
+	componentMap = make(map[string]nexusrm.RepositoryItem)
+	if err == nil {
+		for _, c := range components {
+			componentNames = append(componentNames, c.Name)
+			componentMap[c.Name] = c
+		}
+	}
+	componentNames = append(componentNames, "Back")
+	// Download file
+	selectedComponent, _ := promtSelect("Select file to download:", componentNames, "")
+
+	if selectedComponent == "Back" {
+		return
+	}
+
+	DownloadIfDifferent(rootPath, componentMap[selectedComponent])
+
+}
+
+// UploadOne uploads a single file
+func UploadOne(rm nexusrm.RM, repo string, rootPath string) {
+	// Select file interactively
+	files, err := getLocalFiles(rootPath)
+	if err != nil {
+		log.Println(err)
+	}
+	selectedFile, _ := promtSelect("Select file to upload:", files, "")
+	// Upload file
+	UploadIfDifferent(rm, repo, rootPath, selectedFile)
+}
+
 func main() {
 
 	exit := false
@@ -266,7 +313,8 @@ func main() {
 			exit = true
 		}
 		for !exit && !back {
-			actions := []string{"List repo", "List local", "Download all", "Upload all", "Back", "Exit"}
+			actions := []string{"List repo", "List local", "Download all", "Upload all",
+				"Download one", "Upload one", "Back", "Exit"}
 			action, _ := promtSelect("Select Actions", actions, "")
 
 			switch action {
@@ -279,8 +327,12 @@ func main() {
 			case actions[3]:
 				UploadAll(rm, selectedRepo, rootPath)
 			case actions[4]:
-				back = true
+				DownloadOne(rm, selectedRepo, rootPath)
 			case actions[5]:
+				UploadOne(rm, selectedRepo, rootPath)
+			case actions[len(actions)-2]:
+				back = true
+			case actions[len(actions)-1]:
 				exit = true
 			}
 		}
