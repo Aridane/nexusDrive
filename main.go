@@ -134,7 +134,7 @@ func getComponent(rm nexusrm.RM, repo string, path string) (nexusrm.RepositoryIt
 
 // getMd5 Gets md5, 0 if error
 func getMd5(path string) (string, error) {
-	var res string
+	res := ""
 	f, err := os.Open(path)
 	if err != nil {
 		return res, err
@@ -157,13 +157,12 @@ func DownloadAll(rm nexusrm.RM, repo string, rootPath string) {
 			DownloadIfDifferent(rootPath, c)
 		}
 	}
-
 }
 
 // DownloadIfDifferent Downloads repository item if md5 are different
 func DownloadIfDifferent(rootPath string, c nexusrm.RepositoryItem) {
 	fileMd5, err := getMd5(filepath.Join(rootPath, c.Name))
-	if err == nil && fileMd5 != c.Assets[0].Checksum.Md5 {
+	if os.IsNotExist(err) || (err == nil && fileMd5 != c.Assets[0].Checksum.Md5) {
 		fmt.Println("Downloading ", filepath.Join(rootPath, c.Name))
 		fmt.Println("\tRemote md5 ", c.Assets[0].Checksum.Md5)
 		fmt.Println("\tLocal md5  ", fileMd5)
@@ -301,11 +300,15 @@ func main() {
 	for !exit {
 		// Get list of repos
 		var repoNames []string
-		if repos, err := nexusrm.GetRepositories(rm); err == nil {
+		repos, err := nexusrm.GetRepositories(rm)
+		if err == nil {
 			for _, r := range repos {
 				repoNames = append(repoNames, r.Name)
 			}
+		} else {
+			log.Fatal(err)
 		}
+
 		repoNames = append(repoNames, "Exit")
 		// Select which repo to work with
 		selectedRepo, _ := promtSelect("Select Repo", repoNames, "")
@@ -313,6 +316,7 @@ func main() {
 			exit = true
 		}
 		for !exit && !back {
+			rootPath := filepath.Join(rootPath, selectedRepo)
 			actions := []string{"List repo", "List local", "Download all", "Upload all",
 				"Download one", "Upload one", "Back", "Exit"}
 			action, _ := promtSelect("Select Actions", actions, "")
