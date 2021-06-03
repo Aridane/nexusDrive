@@ -7,8 +7,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
+
 	//"syscall"
 	//"os/exec"
 
@@ -19,20 +22,29 @@ import (
 var nexusUser string
 var nexusPassword string
 var selectedRepo string
+var nexusServer string
 
 // DownloadFile download a file
 func DownloadFile(path string, url string) error {
-	//syscall.Umask(0)
+	syscall.Umask(0)
 	err := os.MkdirAll(filepath.Dir(path), 0775)
 
 	out, err := os.Create(path)
 	if err != nil {
+		fmt.Println("Error", err)
 		return err
 	}
 	defer out.Close()
 
-	resp, err := http.Get(url)
+	index := 7
+	if strings.Contains(url, "https") {
+		index = 8
+	}
+	newURL := url[:index] + nexusUser + ":" + nexusPassword + "@" + url[index:]
+	fmt.Println("url", newURL)
+	resp, err := http.Get(newURL)
 	if err != nil {
+		fmt.Println("Error", err)
 		return err
 	}
 	defer resp.Body.Close()
@@ -166,7 +178,6 @@ func DownloadFolder(rm nexusrm.RM, repo string, source string, destination strin
 				fmt.Println(c.Name)
 				DownloadIfDifferent(source, destination, c)
 			}
-
 		}
 	}
 }
@@ -221,43 +232,43 @@ func UploadIfDifferent(rm nexusrm.RM, repo string, source string, destination st
 
 // UploadFile uploads a file to repo
 func UploadFile(rm nexusrm.RM, repo string, source string, path string) {
-	
-	f, err := os.Open(source)
+
+	/*f, err := os.Open(source)
 	if err != nil {
 		log.Fatal(err)
-	}
-	
+	}*/
 
-	/*cmd := exec.Command("curl", "-v", "-O", "-k", "-u", nexusUser+":"+nexusPassword,
-						"--upload-file",source,
-						"https://pforgeipt.intra.airbusds.corp/nexus3/"+selectedRepo+path
+	cmd := exec.Command("curl", "-O", "-k", "-u", nexusUser+":"+nexusPassword,
+		"-H", "\"Content-type: application/json\"",
+		"-H", "\"Expect:\"",
+		"--upload-file", source,
+		nexusServer+"/repository/"+selectedRepo+"/"+path)
 
-	fmt.Println("curl", "-v", "-O", "-k", "-u", nexusUser+":"+nexusPassword,
-	"--upload-file",source,
-	"https://pforgeipt.intra.airbusds.corp/nexus3/"+selectedRepo+path)
+	fmt.Println("curl", "-O", "-k", "-u", nexusUser+":"+nexusPassword,
+		"--upload-file", source,
+		nexusServer+"/repository/"+selectedRepo+"/"+path)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	err := cmd.Run()
 	if err != nil {
-    	fmt.Println("Error: ", err)
-	}*/
-
-
-	component := nexusrm.UploadComponentRaw{
-		Assets: []nexusrm.UploadAssetRaw{
-			nexusrm.UploadAssetRaw{
-				File:     f,
-				Filename: filepath.Base(path)}},
-		Directory: filepath.Dir(path),
-		Tag:       ""}
-	err = nexusrm.UploadComponent(rm, repo, component)
-	if err != nil {
-		f.Close()
-		log.Fatal(err)
+		fmt.Println("Error: ", err)
 	}
-	f.Close()
+	/*
+		component := nexusrm.UploadComponentRaw{
+			Assets: []nexusrm.UploadAssetRaw{
+				nexusrm.UploadAssetRaw{
+					File:     f,
+					Filename: filepath.Base(path)}},
+			Directory: filepath.Dir(path),
+			Tag:       ""}
+		err = nexusrm.UploadComponent(rm, repo, component)
+		if err != nil {
+			f.Close()
+			log.Fatal(err)
+		}
+		f.Close()*/
 }
 
 // UploadFolder files overwriting
@@ -268,7 +279,7 @@ func UploadFolder(rm nexusrm.RM, repo string, source string, destination string)
 	}
 	for _, f := range files {
 		fmt.Println(f)
-		UploadIfDifferent(rm, repo, filepath.Join(source,f), filepath.Join(destination,f))
+		UploadIfDifferent(rm, repo, filepath.Join(source, f), filepath.Join(destination, f))
 	}
 }
 
@@ -320,13 +331,13 @@ func UploadOne(rm nexusrm.RM, repo string, source string, destination string) {
 	UploadIfDifferent(rm, repo, filepath.Join(source, selectedFile), filepath.Join(destination, selectedFile))
 }
 
-
 func main() {
 
 	exit := false
 	back := false
 	rootPath := ""
-	nexusServer, err := promtInput("Server: ", "https://pforgeipt.intra.airbusds.corp/nexus3")
+	var err error
+	nexusServer, err = promtInput("Server: ", "https://pforgeipt.intra.airbusds.corp/nexus3")
 	nexusUser, err = promtInput("User: ", "c84370")
 	nexusPassword, err = promtInputMasked("Password: ", "admin")
 
@@ -370,11 +381,11 @@ func main() {
 				}
 				ListLocal(rootPath)
 			case actions[2]:
-				source, err := promtInput("Source: ", "/home/user/somefolder")
+				source, err := promtInput("Source: ", "somefolder/somefolder")
 				if err != nil {
 					panic(err)
 				}
-				destination, err := promtInput("Destination: ", "somefolder/somefolder")
+				destination, err := promtInput("Destination: ", "/home/user/somefolder")
 				if err != nil {
 					panic(err)
 				}
