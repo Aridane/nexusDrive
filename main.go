@@ -8,15 +8,21 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"syscall"
+	"strings"
+	//"syscall"
+	//"os/exec"
 
 	"github.com/manifoldco/promptui"
 	nexusrm "github.com/sonatype-nexus-community/gonexus/rm"
 )
 
+var nexusUser string
+var nexusPassword string
+var selectedRepo string
+
 // DownloadFile download a file
 func DownloadFile(path string, url string) error {
-	syscall.Umask(0)
+	//syscall.Umask(0)
 	err := os.MkdirAll(filepath.Dir(path), 0775)
 
 	out, err := os.Create(path)
@@ -149,24 +155,31 @@ func getMd5(path string) (string, error) {
 	return res, nil
 }
 
-// DownloadAll Download all files from repo overwriting changed ones
-func DownloadAll(rm nexusrm.RM, repo string, rootPath string) {
+// DownloadFolder Download all files from repo overwriting changed ones
+func DownloadFolder(rm nexusrm.RM, repo string, source string, destination string) {
+	fmt.Println("Download from ", repo, " source ", source, " dst ", destination)
 	components, err := nexusrm.GetComponents(rm, repo)
 	if err == nil {
 		for _, c := range components {
-			DownloadIfDifferent(rootPath, c)
+			matched := strings.HasPrefix(c.Name, source)
+			if err == nil && matched {
+				fmt.Println(c.Name)
+				DownloadIfDifferent(source, destination, c)
+			}
+
 		}
 	}
 }
 
 // DownloadIfDifferent Downloads repository item if md5 are different
-func DownloadIfDifferent(rootPath string, c nexusrm.RepositoryItem) {
-	fileMd5, err := getMd5(filepath.Join(rootPath, c.Name))
+func DownloadIfDifferent(sourcePath string, destination string, c nexusrm.RepositoryItem) {
+	cName := strings.TrimPrefix(c.Name, sourcePath)
+	fileMd5, err := getMd5(filepath.Join(destination, cName))
 	if os.IsNotExist(err) || (err == nil && fileMd5 != c.Assets[0].Checksum.Md5) {
-		fmt.Println("Downloading ", filepath.Join(rootPath, c.Name))
+		fmt.Println("Downloading to ", filepath.Join(destination, cName))
 		fmt.Println("\tRemote md5 ", c.Assets[0].Checksum.Md5)
 		fmt.Println("\tLocal md5  ", fileMd5)
-		DownloadFile(filepath.Join(rootPath, c.Name), c.Assets[0].DownloadURL)
+		DownloadFile(filepath.Join(destination, cName), c.Assets[0].DownloadURL)
 	} else {
 		if err != nil {
 			fmt.Println("Skipping ", c.Name, err)
@@ -178,15 +191,18 @@ func DownloadIfDifferent(rootPath string, c nexusrm.RepositoryItem) {
 }
 
 // UploadIfDifferent Uploads item if md5 are different
-func UploadIfDifferent(rm nexusrm.RM, repo string, rootPath string, path string) {
+func UploadIfDifferent(rm nexusrm.RM, repo string, source string, destination string) {
 
-	c, found := getComponent(rm, repo, path)
+	fmt.Println("UploadIfDifferent repo", repo, " source ", source, " destination ", destination)
+
+	c, found := getComponent(rm, repo, destination)
 
 	if found {
-		fileMd5, err := getMd5(filepath.Join(rootPath, path))
+		fmt.Println("Found")
+		fileMd5, err := getMd5(source)
 		if err == nil && fileMd5 != c.Assets[0].Checksum.Md5 {
-			fmt.Println("Uploading ", path)
-			UploadFile(rm, repo, rootPath, path)
+			fmt.Println("Uploading ", source, " to ", destination)
+			UploadFile(rm, repo, source, destination)
 		} else {
 			if err != nil {
 				fmt.Println("Skipping ", c.Name, err)
@@ -196,19 +212,38 @@ func UploadIfDifferent(rm nexusrm.RM, repo string, rootPath string, path string)
 			}
 		}
 	} else {
-		fmt.Println("Uploading ", path)
-		UploadFile(rm, repo, rootPath, path)
+		fmt.Println("Not found")
+		fmt.Println("Uploading ", source, " to ", destination)
+		UploadFile(rm, repo, source, destination)
 	}
 
 }
 
 // UploadFile uploads a file to repo
-func UploadFile(rm nexusrm.RM, repo string, rootPath string, path string) {
-	f, err := os.Open(filepath.Join(rootPath, path))
+func UploadFile(rm nexusrm.RM, repo string, source string, path string) {
+	
+	f, err := os.Open(source)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer f.Close()
+	
+
+	/*cmd := exec.Command("curl", "-v", "-O", "-k", "-u", nexusUser+":"+nexusPassword,
+						"--upload-file",source,
+						"https://pforgeipt.intra.airbusds.corp/nexus3/"+selectedRepo+path
+
+	fmt.Println("curl", "-v", "-O", "-k", "-u", nexusUser+":"+nexusPassword,
+	"--upload-file",source,
+	"https://pforgeipt.intra.airbusds.corp/nexus3/"+selectedRepo+path)
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	err := cmd.Run()
+	if err != nil {
+    	fmt.Println("Error: ", err)
+	}*/
+
 
 	component := nexusrm.UploadComponentRaw{
 		Assets: []nexusrm.UploadAssetRaw{
@@ -219,18 +254,21 @@ func UploadFile(rm nexusrm.RM, repo string, rootPath string, path string) {
 		Tag:       ""}
 	err = nexusrm.UploadComponent(rm, repo, component)
 	if err != nil {
+		f.Close()
 		log.Fatal(err)
 	}
+	f.Close()
 }
 
-// UploadAll files overwriting
-func UploadAll(rm nexusrm.RM, repo string, rootPath string) {
-	files, err := getLocalFiles(rootPath)
+// UploadFolder files overwriting
+func UploadFolder(rm nexusrm.RM, repo string, source string, destination string) {
+	files, err := getLocalFiles(source)
 	if err != nil {
 		log.Println(err)
 	}
 	for _, f := range files {
-		UploadIfDifferent(rm, repo, rootPath, f)
+		fmt.Println(f)
+		UploadIfDifferent(rm, repo, filepath.Join(source,f), filepath.Join(destination,f))
 	}
 }
 
@@ -265,37 +303,39 @@ func DownloadOne(rm nexusrm.RM, repo string, rootPath string) {
 		return
 	}
 
-	DownloadIfDifferent(rootPath, componentMap[selectedComponent])
+	DownloadIfDifferent("", rootPath, componentMap[selectedComponent])
 
 }
 
 // UploadOne uploads a single file
-func UploadOne(rm nexusrm.RM, repo string, rootPath string) {
+func UploadOne(rm nexusrm.RM, repo string, source string, destination string) {
 	// Select file interactively
-	files, err := getLocalFiles(rootPath)
+	files, err := getLocalFiles(source)
 	if err != nil {
 		log.Println(err)
 	}
 	selectedFile, _ := promtSelect("Select file to upload:", files, "")
+
 	// Upload file
-	UploadIfDifferent(rm, repo, rootPath, selectedFile)
+	UploadIfDifferent(rm, repo, filepath.Join(source, selectedFile), filepath.Join(destination, selectedFile))
 }
+
 
 func main() {
 
 	exit := false
 	back := false
-
-	rootPath, err := promtInput("Root: ", "/home/aridane/NexusDrive")
-	nexusServer, err := promtInput("Server: ", "http://localhost:8081")
-	nexusUser, err := promtInput("User: ", "admin")
-	nexusPassword, err := promtInputMasked("Password: ", "admin")
+	rootPath := ""
+	nexusServer, err := promtInput("Server: ", "https://pforgeipt.intra.airbusds.corp/nexus3")
+	nexusUser, err = promtInput("User: ", "c84370")
+	nexusPassword, err = promtInputMasked("Password: ", "admin")
 
 	// Connect to nexus
 	rm, err := nexusrm.New(nexusServer, nexusUser, nexusPassword)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("rm created")
 
 	for !exit {
 		// Get list of repos
@@ -311,29 +351,56 @@ func main() {
 
 		repoNames = append(repoNames, "Exit")
 		// Select which repo to work with
-		selectedRepo, _ := promtSelect("Select Repo", repoNames, "")
+		selectedRepo, _ = promtSelect("Select Repo", repoNames, "")
 		if selectedRepo == "Exit" {
 			exit = true
 		}
 		for !exit && !back {
-			rootPath := filepath.Join(rootPath, selectedRepo)
-			actions := []string{"List repo", "List local", "Download all", "Upload all",
-				"Download one", "Upload one", "Back", "Exit"}
+			actions := []string{"List repo", "List local", "Download folder", "Upload folder",
+				"Download file", "Upload file", "Back", "Exit"}
 			action, _ := promtSelect("Select Actions", actions, "")
 
 			switch action {
 			case actions[0]:
 				ListRepo(rm, selectedRepo)
 			case actions[1]:
+				rootPath, err := promtInput("Path: ", "/home/user/somefolder")
+				if err != nil {
+					panic(err)
+				}
 				ListLocal(rootPath)
 			case actions[2]:
-				DownloadAll(rm, selectedRepo, rootPath)
+				source, err := promtInput("Source: ", "/home/user/somefolder")
+				if err != nil {
+					panic(err)
+				}
+				destination, err := promtInput("Destination: ", "somefolder/somefolder")
+				if err != nil {
+					panic(err)
+				}
+				DownloadFolder(rm, selectedRepo, source, destination)
 			case actions[3]:
-				UploadAll(rm, selectedRepo, rootPath)
+				source, err := promtInput("Source: ", "/media/c84370/Data/NEXUS/")
+				if err != nil {
+					panic(err)
+				}
+				destination, err := promtInput("Destination: ", "releases/")
+				if err != nil {
+					panic(err)
+				}
+				UploadFolder(rm, selectedRepo, source, destination)
 			case actions[4]:
 				DownloadOne(rm, selectedRepo, rootPath)
 			case actions[5]:
-				UploadOne(rm, selectedRepo, rootPath)
+				source, err := promtInput("Source: ", "/home/user/somefolder")
+				if err != nil {
+					panic(err)
+				}
+				destination, err := promtInput("Destination: ", "somefolder/somefolder")
+				if err != nil {
+					panic(err)
+				}
+				UploadOne(rm, selectedRepo, source, destination)
 			case actions[len(actions)-2]:
 				back = true
 			case actions[len(actions)-1]:
