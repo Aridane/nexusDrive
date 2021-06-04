@@ -41,7 +41,6 @@ func DownloadFile(path string, url string) error {
 		index = 8
 	}
 	newURL := url[:index] + nexusUser + ":" + nexusPassword + "@" + url[index:]
-	fmt.Println("url", newURL)
 	resp, err := http.Get(newURL)
 	if err != nil {
 		fmt.Println("Error", err)
@@ -175,7 +174,7 @@ func DownloadFolder(rm nexusrm.RM, repo string, source string, destination strin
 		for _, c := range components {
 			matched := strings.HasPrefix(c.Name, source)
 			if err == nil && matched {
-				fmt.Println(c.Name)
+				fmt.Println("Download from ", c.Name)
 				DownloadIfDifferent(source, destination, c)
 			}
 		}
@@ -238,15 +237,19 @@ func UploadFile(rm nexusrm.RM, repo string, source string, path string) {
 		log.Fatal(err)
 	}*/
 
-	cmd := exec.Command("curl", "-O", "-k", "-u", nexusUser+":"+nexusPassword,
+
+	/*fmt.Println("curl", "--progress-bar","--silent","-k", "-u", nexusUser+":********",
+				"-H", "\"Content-type: application/json\"",
+				"-H", "\"Expect:\"",
+				"--upload-file", source,
+				nexusServer+"/repository/"+selectedRepo+"/"+path)*/
+
+	cmd := exec.Command("curl", "--progress-bar","-k", "-u", nexusUser+":"+nexusPassword,
 		"-H", "\"Content-type: application/json\"",
 		"-H", "\"Expect:\"",
 		"--upload-file", source,
 		nexusServer+"/repository/"+selectedRepo+"/"+path)
 
-	fmt.Println("curl", "-O", "-k", "-u", nexusUser+":"+nexusPassword,
-		"--upload-file", source,
-		nexusServer+"/repository/"+selectedRepo+"/"+path)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
