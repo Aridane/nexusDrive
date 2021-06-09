@@ -237,19 +237,17 @@ func UploadFile(rm nexusrm.RM, repo string, source string, path string) {
 		log.Fatal(err)
 	}*/
 
-
-	/*fmt.Println("curl", "--progress-bar","--silent","-k", "-u", nexusUser+":********",
-				"-H", "\"Content-type: application/json\"",
-				"-H", "\"Expect:\"",
-				"--upload-file", source,
-				nexusServer+"/repository/"+selectedRepo+"/"+path)*/
-
-	cmd := exec.Command("curl", "--progress-bar","-k", "-u", nexusUser+":"+nexusPassword,
+	fmt.Println("curl", "-k", "-u", nexusUser+":********",
 		"-H", "\"Content-type: application/json\"",
 		"-H", "\"Expect:\"",
 		"--upload-file", source,
 		nexusServer+"/repository/"+selectedRepo+"/"+path)
 
+	cmd := exec.Command("curl", "-k", "-u", nexusUser+":"+nexusPassword,
+		"-H", "Content-type: application/json",
+		"-H", "Expect:",
+		"--upload-file", source,
+		nexusServer+"/repository/"+selectedRepo+"/"+path)
 
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
