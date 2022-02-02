@@ -346,7 +346,7 @@ func main() {
 	rootPath := ""
 	var err error
 	nexusServer, err = promtInput("Server: ", "https://pforgeipt.intra.airbusds.corp/nexus3")
-	nexusUser, err = promtInput("User: ", "c84370")
+	nexusUser, err = promtInput("User: ", "admin")
 	nexusPassword, err = promtInputMasked("Password: ", "admin")
 
 	// Connect to nexus
