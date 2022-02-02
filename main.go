@@ -83,6 +83,13 @@ func promtSelect(promtStr string, options []string, defaultValue string) (string
 	promptSel := promptui.Select{
 		Label: promtStr + "(" + defaultValue + ")",
 		Items: options,
+		Searcher: func(input string, index int) bool {
+			option := options[index]
+			name := strings.Replace(strings.ToLower(option), " ", "", -1)
+			input = strings.Replace(strings.ToLower(input), " ", "", -1)
+
+			return strings.Contains(name, input)
+		},
 	}
 
 	_, result, err := promptSel.Run()
